@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: make lint
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: make test
+      - run: make build
+
+      - name: Restore model
+        id: model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/molt-parakeet
+          key: model-${{ hashFiles('models.lock.json') }}
+      - name: Build model asset
+        run: ./scripts/model.sh ~/.cache/molt-parakeet out/model
+
+      # Real-model smoke test: transcribe upstream's sample clips through a
+      # running service. Matches words, not exact strings, so numeric drift
+      # between onnxruntime builds doesn't flake.
+      - name: Smoke test
+        run: |
+          mkdir -p model-x state
+          tar -xzf out/model/*.tgz -C model-x
+          bz=~/.cache/molt-parakeet/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2
+          tar -xjf "$bz" -C . sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/test_wavs
+          wavs=sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/test_wavs
+          sleep 600 | MOLT_PARAKEET_PARENT_LIVENESS_STDIN=1 target/release/molt-parakeet serve \
+            --socket state/stt.sock --model model-x/model > state/serve.log 2>&1 &
+          for i in $(seq 50); do [ -S state/stt.sock ] && break; sleep 0.2; done
+          target/release/molt-parakeet health --socket state/stt.sock
+          check() {
+            out=$(target/release/molt-parakeet transcribe --socket state/stt.sock "$wavs/$1.wav")
+            echo "$1: $out"
+            grep -qi "$2" <<< "$out"
+          }
+          check en "country"
+          check de "Wurst"
+          check es "país"
+          check fr "pays"
+          cat state/serve.log

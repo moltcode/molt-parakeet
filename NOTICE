@@ -1,0 +1,17 @@
+molt-parakeet
+Copyright (c) 2026 Molt Code. MIT licensed (see LICENSE).
+
+This plugin uses third-party work:
+
+- NVIDIA Parakeet TDT 0.6B v3
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+  Licensed under CC-BY-4.0 by NVIDIA. The model weights ship separately as
+  the model-* release asset (sherpa-onnx int8 ONNX export, unmodified).
+
+- sherpa-onnx (k2-fsa), statically linked
+  https://github.com/k2-fsa/sherpa-onnx
+  Licensed under Apache-2.0.
+
+- ONNX Runtime (Microsoft), statically linked through sherpa-onnx
+  https://github.com/microsoft/onnxruntime
+  Licensed under MIT.

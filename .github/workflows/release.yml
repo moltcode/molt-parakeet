@@ -1,0 +1,53 @@
+name: release
+
+# v<version> tags (matching package.json) publish the Linux tarballs; the
+# signed macOS tarball and artifacts.json follow from `make release-darwin`.
+# model-* tags publish the model asset from models.lock.json.
+on:
+  push:
+    tags: ["v*", "model-*"]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    if: startsWith(github.ref_name, 'v')
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches package.json
+        run: |
+          want="v$(jq -r .version package.json)"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want" >&2; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: make dist-linux
+      - run: target/release/molt-parakeet --version
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="molt-parakeet $GITHUB_REF_NAME: Parakeet TDT 0.6B v3 speech-to-text for Molt Code on sherpa-onnx $(jq -r '.molt.upstream["sherpa-onnx"]' package.json). The model ships separately as a model-* release."
+          gh release create "$GITHUB_REF_NAME" --title "molt-parakeet ${GITHUB_REF_NAME#v}" --notes "$notes" 2>/dev/null || true
+          gh release upload "$GITHUB_REF_NAME" out/*.tgz
+
+  model:
+    if: startsWith(github.ref_name, 'model-')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches models.lock.json
+        run: |
+          want="model-parakeet-tdt-0.6b-v3-int8-$(jq -r .revision models.lock.json)"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want" >&2; exit 1; }
+      - run: ./scripts/model.sh ~/.cache/molt-parakeet out/model
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/model/*.tgz out/model/model.json \
+            --title "Model: Parakeet TDT 0.6B v3 int8 (rev $(jq -r .revision models.lock.json))" \
+            --notes "NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0), sherpa-onnx int8 export from k2-fsa/sherpa-onnx asr-models, repacked as tar.gz with a model/ root. Checked against the sha256 pins in models.lock.json."
