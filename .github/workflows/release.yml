@@ -23,7 +23,7 @@ jobs:
         run: |
           want="v$(jq -r .version package.json)"
           [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want" >&2; exit 1; }
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
       - run: make dist-linux
       - run: target/release/molt-parakeet --version
       - name: Publish

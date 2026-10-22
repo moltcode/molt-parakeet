@@ -71,8 +71,10 @@ pub fn pcm_s16le(body: &[u8], sample_rate: u32, channels: u32) -> Result<Audio> 
         .chunks_exact(frame)
         .map(|f| {
             let sum: f32 = f
-                .chunks_exact(2)
-                .map(|s| i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0)
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|s| i16::from_le_bytes(*s) as f32 / 32768.0)
                 .sum();
             sum / channels as f32
         })
@@ -148,8 +150,10 @@ fn f32le(body: &[u8], sample_rate: u32, channels: u32) -> Result<Audio> {
         .chunks_exact(frame)
         .map(|f| {
             let sum: f32 = f
-                .chunks_exact(4)
-                .map(|s| f32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|s| f32::from_le_bytes(*s))
                 .sum();
             sum / channels as f32
         })
