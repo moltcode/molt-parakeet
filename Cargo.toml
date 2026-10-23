@@ -1,6 +1,6 @@
 [package]
 name = "molt-parakeet"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Molt plugin: on-device speech-to-text, NVIDIA Parakeet TDT 0.6B v3 on sherpa-onnx"

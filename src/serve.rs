@@ -14,7 +14,7 @@ use axum::routing::{get, post};
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixListener;
 
-use crate::api::{ErrorBody, Health, Transcript};
+use crate::api::{self, ErrorBody, Health, Transcript};
 use crate::audio;
 use crate::engine::Engine;
 
@@ -69,6 +69,14 @@ async fn transcribe(State(state): State<AppState>, headers: HeaderMap, body: Byt
         Ok(audio) => audio,
         Err(err) => return error(StatusCode::UNSUPPORTED_MEDIA_TYPE, format!("{err:#}")),
     };
+    let hotwords = match headers.get(api::HOTWORDS_HEADER).map(|v| v.to_str()) {
+        None => Vec::new(),
+        Some(Ok(value)) => match api::decode_hotwords(value) {
+            Ok(hotwords) => hotwords,
+            Err(err) => return error(StatusCode::BAD_REQUEST, format!("bad X-Hotwords: {err:#}")),
+        },
+        Some(Err(_)) => return error(StatusCode::BAD_REQUEST, "bad X-Hotwords: not ASCII"),
+    };
     let duration_ms = audio.duration_ms();
     if duration_ms > state.max_seconds as u64 * 1000 {
         return error(
@@ -92,9 +100,10 @@ async fn transcribe(State(state): State<AppState>, headers: HeaderMap, body: Byt
 
     let engine = state.engine.clone();
     let started = Instant::now();
-    let result =
-        tokio::task::spawn_blocking(move || engine.transcribe(&audio.samples, audio.sample_rate))
-            .await;
+    let result = tokio::task::spawn_blocking(move || {
+        engine.transcribe(&audio.samples, audio.sample_rate, &hotwords)
+    })
+    .await;
     let decode_ms = started.elapsed().as_millis() as u64;
 
     match result {

@@ -20,6 +20,17 @@ pub fn request(
     content_type: Option<&str>,
     body: &[u8],
 ) -> Result<Reply> {
+    request_with(socket, method, path, content_type, &[], body)
+}
+
+pub fn request_with(
+    socket: &Path,
+    method: &str,
+    path: &str,
+    content_type: Option<&str>,
+    headers: &[(&str, String)],
+    body: &[u8],
+) -> Result<Reply> {
     let mut stream = UnixStream::connect(socket)
         .with_context(|| format!("connecting to {}", socket.display()))?;
     stream.set_read_timeout(Some(Duration::from_secs(600)))?;
@@ -27,6 +38,9 @@ pub fn request(
     let mut head = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n");
     if let Some(ct) = content_type {
         head.push_str(&format!("Content-Type: {ct}\r\n"));
+    }
+    for (name, value) in headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
     }
     head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
     stream.write_all(head.as_bytes())?;

@@ -44,17 +44,31 @@ GET /v1/health
 POST /v1/transcribe
 Content-Type: audio/x-s16le; rate=16000; channels=1   (raw little-endian PCM)
            or audio/wav                               (PCM16 or float32, any rate)
+X-Hotwords: <base64 JSON [{"text": "Junaid"}, {"text": "GPUI", "boost": 3}]>   (optional)
 → {"text": "...", "duration_ms": 3845, "decode_ms": 349}
 ```
 
-Errors are `{"error": "..."}` with 413 (over `max_seconds`), 415 (bad
-audio) or 500.
+Errors are `{"error": "..."}` with 400 (bad `X-Hotwords`), 413 (over
+`max_seconds`), 415 (bad audio) or 500.
+
+### Hotwords
+
+Decoding is sherpa-onnx `modified_beam_search`, so a request can bias the
+model toward words it hears but can't spell (names, crate and product
+names). Molt sends a workspace's glossary this way. Each hotword's `boost`
+defaults to 2 and is capped at 4; above that, output gets worse ("main"
+heard as "mane"). The model asset has no `bpe.vocab`, which sherpa-onnx needs
+to tokenize hotwords, so the service writes one from `tokens.txt` into the
+temp dir on load.
+
+Hotwords don't fix common words the model hears instead ("Molt" as "Mold").
+Molt fixes those after decoding from each glossary term's `heard_as` list.
 
 ## CLI
 
 ```
 molt-parakeet serve --socket PATH --model DIR [--threads N] [--idle-unload SECS] [--max-seconds N]
-molt-parakeet transcribe FILE.wav [--json] [--raw] [--socket PATH] [--model DIR]
+molt-parakeet transcribe FILE.wav [--json] [--raw] [--socket PATH] [--model DIR] [--hotword WORD[=SCORE]]...
 molt-parakeet health [--socket PATH]
 ```
 

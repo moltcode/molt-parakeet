@@ -7,6 +7,7 @@
 
 pub mod api;
 pub mod audio;
+mod b64;
 pub mod client;
 pub mod engine;
 pub mod serve;

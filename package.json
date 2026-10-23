@@ -1,6 +1,6 @@
 {
   "name": "molt-parakeet",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Voice input for Molt Code: on-device speech-to-text with NVIDIA Parakeet TDT 0.6B v3 on sherpa-onnx, served to the composer through Molt's stt provider API.",
   "license": "MIT",
   "repository": {

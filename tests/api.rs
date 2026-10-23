@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use molt_parakeet::api::{ErrorBody, Health, Transcript};
+use molt_parakeet::api::{self, ErrorBody, Health, Hotword, Transcript};
 use molt_parakeet::client;
 use molt_parakeet::engine::Engine;
 use molt_parakeet::serve::{self, ServeOptions};
@@ -16,9 +16,19 @@ struct Fake {
 }
 
 impl Engine for Fake {
-    fn transcribe(&self, samples: &[f32], sample_rate: u32) -> anyhow::Result<String> {
+    fn transcribe(
+        &self,
+        samples: &[f32],
+        sample_rate: u32,
+        hotwords: &[Hotword],
+    ) -> anyhow::Result<String> {
         self.loaded.store(true, Ordering::SeqCst);
-        Ok(format!("{} samples at {sample_rate}", samples.len()))
+        if hotwords.is_empty() {
+            Ok(format!("{} samples at {sample_rate}", samples.len()))
+        } else {
+            let words: Vec<_> = hotwords.iter().map(|h| h.text.as_str()).collect();
+            Ok(format!("hotwords {}", words.join(",")))
+        }
     }
     fn loaded(&self) -> bool {
         self.loaded.load(Ordering::SeqCst)
@@ -85,6 +95,50 @@ fn transcribes_raw_pcm() {
     let t: Transcript = serde_json::from_slice(&reply.body).unwrap();
     assert_eq!(t.text, "16000 samples at 16000");
     assert_eq!(t.duration_ms, 1000);
+}
+
+#[test]
+fn hotwords_reach_the_engine() {
+    let (_dir, socket) = start(600);
+    let pcm = vec![0u8; 3200];
+    let hotwords = vec![
+        Hotword {
+            text: "Junaid".into(),
+            boost: None,
+        },
+        Hotword {
+            text: "Molt Connect".into(),
+            boost: Some(3.0),
+        },
+    ];
+    let reply = client::request_with(
+        &socket,
+        "POST",
+        "/v1/transcribe",
+        Some("audio/x-s16le; rate=16000; channels=1"),
+        &[(api::HOTWORDS_HEADER, api::encode_hotwords(&hotwords))],
+        &pcm,
+    )
+    .unwrap();
+    assert_eq!(
+        reply.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&reply.body)
+    );
+    let t: Transcript = serde_json::from_slice(&reply.body).unwrap();
+    assert_eq!(t.text, "hotwords Junaid,Molt Connect");
+
+    let bad = client::request_with(
+        &socket,
+        "POST",
+        "/v1/transcribe",
+        Some("audio/x-s16le; rate=16000; channels=1"),
+        &[(api::HOTWORDS_HEADER, "not base64!".into())],
+        &pcm,
+    )
+    .unwrap();
+    assert_eq!(bad.status, 400);
 }
 
 #[test]

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use molt_parakeet::api::{ErrorBody, Health, Transcript};
+use molt_parakeet::api::{self, ErrorBody, Health, Hotword, Transcript};
 use molt_parakeet::engine::{Engine, Sherpa};
 use molt_parakeet::{audio, client, serve};
 
@@ -55,6 +55,10 @@ enum Command {
         model: Option<PathBuf>,
         #[arg(long)]
         threads: Option<i32>,
+        /// A word or phrase to bias decoding toward, optionally `=score`
+        /// (default 2, max 4). Repeatable: `--hotword Junaid --hotword "Molt Connect=3"`.
+        #[arg(long = "hotword")]
+        hotwords: Vec<String>,
     },
     /// Print the running service's health JSON.
     Health {
@@ -102,7 +106,9 @@ fn main() -> Result<()> {
             socket,
             model,
             threads,
+            hotwords,
         } => {
+            let hotwords = parse_hotwords(&hotwords)?;
             let body =
                 std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
             let content_type = if raw {
@@ -128,6 +134,7 @@ fn main() -> Result<()> {
                 threads,
                 content_type,
                 &body,
+                &hotwords,
             )?;
             if json {
                 println!("{}", serde_json::to_string(&transcript)?);
@@ -156,9 +163,22 @@ fn transcribe(
     threads: Option<i32>,
     content_type: &str,
     body: &[u8],
+    hotwords: &[Hotword],
 ) -> Result<Transcript> {
     if let Some(socket) = socket.filter(|s| std::os::unix::net::UnixStream::connect(s).is_ok()) {
-        let reply = client::request(socket, "POST", "/v1/transcribe", Some(content_type), body)?;
+        let headers = if hotwords.is_empty() {
+            Vec::new()
+        } else {
+            vec![(api::HOTWORDS_HEADER, api::encode_hotwords(hotwords))]
+        };
+        let reply = client::request_with(
+            socket,
+            "POST",
+            "/v1/transcribe",
+            Some(content_type),
+            &headers,
+            body,
+        )?;
         if reply.status != 200 {
             let message = serde_json::from_slice::<ErrorBody>(&reply.body)
                 .map(|e| e.error)
@@ -173,11 +193,30 @@ fn transcribe(
     let audio = audio::decode(content_type, body)?;
     let engine = Sherpa::new(model, threads.unwrap_or_else(default_threads))?;
     let started = Instant::now();
-    let text = engine.transcribe(&audio.samples, audio.sample_rate)?;
+    let text = engine.transcribe(&audio.samples, audio.sample_rate, hotwords)?;
     Ok(Transcript {
         text,
         language: None,
         duration_ms: audio.duration_ms(),
         decode_ms: started.elapsed().as_millis() as u64,
     })
+}
+
+fn parse_hotwords(args: &[String]) -> Result<Vec<Hotword>> {
+    args.iter()
+        .map(|arg| match arg.rsplit_once('=') {
+            Some((text, score)) => Ok(Hotword {
+                text: text.to_string(),
+                boost: Some(
+                    score
+                        .parse()
+                        .with_context(|| format!("bad hotword score in {arg:?}"))?,
+                ),
+            }),
+            None => Ok(Hotword {
+                text: arg.clone(),
+                boost: None,
+            }),
+        })
+        .collect()
 }
