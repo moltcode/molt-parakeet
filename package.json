@@ -1,6 +1,6 @@
 {
   "name": "molt-parakeet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Voice input for Molt Code: on-device speech-to-text with NVIDIA Parakeet TDT 0.6B v3 on sherpa-onnx, served to the composer through Molt's stt provider API.",
   "license": "MIT",
   "repository": {
@@ -31,7 +31,9 @@
         "stt": {
           "name": "Parakeet speech-to-text",
           "command": "bin/molt-parakeet",
-          "args": ["serve", "--socket", "${state}/stt.sock", "--model", "${asset:parakeet-v3}/model", "--idle-unload", "600"],
+          "args": ["serve", "--socket", "${state}/stt.sock", "--model", "${asset:parakeet-v3}/model", "--idle-unload", "120"],
+          "activation": "onDemand",
+          "idleTimeout": 300,
           "env": {
             "MOLT_PARAKEET_PARENT_LIVENESS_STDIN": "1"
           },

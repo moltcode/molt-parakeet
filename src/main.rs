@@ -50,7 +50,7 @@ enum Command {
         #[arg(long)]
         socket: Option<PathBuf>,
         /// Load the model in-process when no service answers
-        /// (default: $MOLT_PARAKEET_MODEL).
+        /// (default: $MOLT_PARAKEET_MODEL, else $MOLT_PLUGIN_ASSET_PARAKEET_V3/model).
         #[arg(long)]
         model: Option<PathBuf>,
         #[arg(long)]
@@ -115,8 +115,13 @@ fn main() -> Result<()> {
                     file.display()
                 );
             };
-            let model =
-                model.or_else(|| std::env::var_os("MOLT_PARAKEET_MODEL").map(PathBuf::from));
+            let model = model
+                .or_else(|| std::env::var_os("MOLT_PARAKEET_MODEL").map(PathBuf::from))
+                .or_else(|| {
+                    // Molt's shim exports the model asset's directory.
+                    std::env::var_os("MOLT_PLUGIN_ASSET_PARAKEET_V3")
+                        .map(|dir| PathBuf::from(dir).join("model"))
+                });
             let transcript = transcribe(
                 default_socket(socket).as_deref(),
                 model,

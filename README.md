@@ -18,13 +18,15 @@ pt, ro, sk, sl, es, sv, ru, uk.
 ## What it adds
 
 - `services.stt`: `molt-parakeet serve`, owned by Molt, on
-  `<plugin-state>/stt.sock`. The model loads on the first request (about 1 s
-  on Apple Silicon) and unloads after 10 idle minutes. It holds about 1.2 GB
-  while loaded.
+  `<plugin-state>/stt.sock`. It runs on demand: Molt starts it when a
+  recording begins and stops it after 5 minutes without one, so an idle
+  install runs no process. The model loads on the first request (about 1 s
+  on Apple Silicon), holds about 1.2 GB, and is dropped after 2 idle minutes
+  even while the service runs.
 - `providers.parakeet-v3`: declares that service as an `stt` provider.
 - `bin.molt-parakeet`: agents can transcribe audio files too, e.g.
-  `molt-parakeet transcribe meeting.wav`. It goes through the running service
-  when there is one.
+  `molt-parakeet transcribe meeting.wav`. It goes through the service when it
+  is running, and loads the model in-process otherwise.
 - The model, about 620 MB, is a separate catalog **asset** (`parakeet-v3`).
   Molt stores it content-addressed, so upgrading the binary doesn't download
   it again.
